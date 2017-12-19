@@ -764,24 +764,26 @@ public class VisicutModel
   public void saveJob( String name, File saveFile, ProgressListener pl, Map<LaserProfile, List<LaserProperty>> props, List<String> warnings ) throws IllegalJobException, SocketTimeoutException, Exception{
 	  LaserCutter lasercutter = this.getSelectedLaserDevice().getLaserCutter();
 
-
 	  if (pl != null)
 	  {
 		  pl.taskChanged(this, "preparing job");
+      pl.progressChanged(this, 0);
 	  }
 
 	  java.io.PrintStream fileOutputStream = new PrintStream(saveFile);
 	  LaserJob job = this.prepareJob(name, props);
 	  if (pl != null)
 	  {
-		  pl.taskChanged(this, "sending job");
-		  lasercutter.saveJob(fileOutputStream, job);
-	  }
-	  else
-	  {
-		  lasercutter.saveJob(fileOutputStream, job);
-	  }
+		  pl.taskChanged(this, "saving job");
+    }
+    lasercutter.saveJob(fileOutputStream, job,pl);
     fileOutputStream.close();
+    
+    if(pl != null)
+	  {
+		  pl.taskChanged(this, "job finished");
+      pl.progressChanged(this, 100);
+    }
   }
 
   public int estimateTime(Map<LaserProfile, List<LaserProperty>> propmap) throws FileNotFoundException, IOException
