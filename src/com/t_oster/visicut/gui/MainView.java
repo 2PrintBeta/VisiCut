@@ -70,11 +70,11 @@ import com.tur0kk.thingiverse.ThingiverseManager;
 import com.frochr123.periodictasks.RefreshCameraThread;
 import com.frochr123.periodictasks.RefreshProjectorThread;
 import com.frochr123.periodictasks.RefreshQRCodesTask;
-import com.t_oster.uicomponents.warnings.WarningPanel;
 import com.t_oster.visicut.Preferences;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FileDialog;
+import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
@@ -97,6 +97,7 @@ import java.net.HttpURLConnection;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
@@ -1972,23 +1973,25 @@ private void openMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-
 
   private void exportGcodeMenuItemActionPerformed(java.awt.event.ActionEvent evg)
   {
-    String jobname = getJobName();
-    List<String> warnings = new LinkedList<String>();
+    final String jobname = getJobName();
+    final List<String> warnings = new LinkedList<String>();
     final Map<LaserProfile, List<LaserProperty>> cuttingSettings = this.getPropertyMapForCurrentJob();
     if (cuttingSettings == null)
     {
       return;
     }
 
-    ProgressListener pl = new ProgressListener()
+    final ProgressListener pl = new ProgressListener()
     {
 
+      @Override
       public void progressChanged(Object o, int i)
       {
         MainView.this.progressBar.setValue(i);
         MainView.this.progressBar.repaint();
       }
 
+      @Override
       public void taskChanged(Object o, String string)
       {
         MainView.this.progressBar.setString(string);
@@ -1999,11 +2002,28 @@ private void openMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-
       int userreturn = this.fileChooser.showSaveDialog(this);
       if (userreturn == JFileChooser.APPROVE_OPTION)
       {
-        File selectedFile = this.fileChooser.getSelectedFile();
-        MainView.this.visicutModel1.saveJob(jobname, selectedFile, pl, cuttingSettings, warnings);
+        final File selectedFile = this.fileChooser.getSelectedFile();
+        new Thread(){
+            @Override
+            public void run(){
+              try
+              {
+                MainView.this.visicutModel1.saveJob(jobname, selectedFile, pl, cuttingSettings, warnings);
+              }
+              catch (SocketTimeoutException ex)
+              {
+                dialog.showErrorMessage(ex);
+              }
+              catch (Exception ex)
+              {
+                dialog.showErrorMessage(ex);
+              }
+            }
+        }.start();
+       
       }
     }
-    catch (Exception e3)
+    catch (HeadlessException e3)
     {
       dialog.showErrorMessage(e3);
     }
