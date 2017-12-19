@@ -71,6 +71,7 @@ import com.frochr123.periodictasks.RefreshCameraThread;
 import com.frochr123.periodictasks.RefreshProjectorThread;
 import com.frochr123.periodictasks.RefreshQRCodesTask;
 import com.t_oster.visicut.Preferences;
+import com.t_oster.visicut.model.graphicelements.ImportException;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FileDialog;
@@ -99,6 +100,7 @@ import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLClassLoader;
@@ -225,7 +227,7 @@ public class MainView extends javax.swing.JFrame
    * Shows the according EditLaserProfile dialog for the given
    * laser-profile and returns the altered clone of the profile if ok
    * was pressed, and null else. The given LaserProfile is not touched
-   * @param lp
+   * @param profile
    * @return 
    */
   public LaserProfile editLaserProfile(LaserProfile profile)
@@ -265,7 +267,7 @@ public class MainView extends javax.swing.JFrame
       Image i = ImageIO.read(this.getClass().getResourceAsStream("resources/visicut.png"));
       this.setIconImage(i);
     }
-    catch (Exception e)
+    catch (IOException e)
     {
       System.err.println("Error reading image: " + e);
     }
@@ -282,19 +284,23 @@ public class MainView extends javax.swing.JFrame
     jScrollPane2.addComponentListener(new ComponentListener()
     {
 
+      @Override
       public void componentResized(ComponentEvent ce)
       {
         MainView.this.previewPanel.resizeToFitZoomAndArea();
       }
 
+      @Override
       public void componentMoved(ComponentEvent ce)
       {
       }
 
+      @Override
       public void componentShown(ComponentEvent ce)
       {
       }
 
+      @Override
       public void componentHidden(ComponentEvent ce)
       {
       }
@@ -321,6 +327,7 @@ public class MainView extends javax.swing.JFrame
       macApplication.setPreferencesHandler(new com.apple.eawt.PreferencesHandler()
       {
 
+        @Override
         public void handlePreferences(PreferencesEvent pe)
         {
           MainView.this.jmPreferencesActionPerformed(null);
@@ -330,6 +337,7 @@ public class MainView extends javax.swing.JFrame
       macApplication.setQuitHandler(new com.apple.eawt.QuitHandler()
       {
 
+        @Override
         public void handleQuitRequestWith(QuitEvent qe, QuitResponse qr)
         {
           MainView.this.exitMenuItemActionPerformed(null);
@@ -339,6 +347,7 @@ public class MainView extends javax.swing.JFrame
       macApplication.setAboutHandler(new com.apple.eawt.AboutHandler()
       {
 
+        @Override
         public void handleAbout(AboutEvent ae)
         {
           MainView.this.aboutMenuItemActionPerformed(null);
@@ -347,6 +356,7 @@ public class MainView extends javax.swing.JFrame
       macApplication.setOpenFileHandler(new com.apple.eawt.OpenFilesHandler()
       {
 
+        @Override
         public void openFiles(OpenFilesEvent ofe)
         {
           for (File f : ofe.getFiles())
@@ -360,31 +370,38 @@ public class MainView extends javax.swing.JFrame
     this.addWindowListener(new WindowListener()
     {
 
+      @Override
       public void windowOpened(WindowEvent e)
       {
       }
 
+      @Override
       public void windowClosing(WindowEvent e)
       {
         MainView.this.exitMenuItemActionPerformed(null);
       }
 
+      @Override
       public void windowClosed(WindowEvent e)
       {
       }
 
+      @Override
       public void windowIconified(WindowEvent e)
       {
       }
 
+      @Override
       public void windowDeiconified(WindowEvent e)
       {
       }
 
+      @Override
       public void windowActivated(WindowEvent e)
       {
       }
 
+      @Override
       public void windowDeactivated(WindowEvent e)
       {
       }
@@ -407,6 +424,7 @@ public class MainView extends javax.swing.JFrame
     LaserDeviceManager.getInstance().addPropertyChangeListener(new PropertyChangeListener()
     {
 
+      @Override
       public void propertyChange(PropertyChangeEvent pce)
       {
         refreshLaserDeviceComboBox();
@@ -433,6 +451,7 @@ public class MainView extends javax.swing.JFrame
   private ActionListener exampleItemClicked = new ActionListener()
   {
 
+    @Override
     public void actionPerformed(ActionEvent ae)
     {
       if (!"".equals(ae.getActionCommand()))
@@ -476,6 +495,7 @@ public class MainView extends javax.swing.JFrame
       openExamples.addActionListener(new ActionListener()
       {
 
+        @Override
         public void actionPerformed(ActionEvent ae)
         {
           dialog.openInFilebrowser(new File(Helper.getBasePath(), "examples"));
@@ -502,6 +522,7 @@ public class MainView extends javax.swing.JFrame
         i.addActionListener(new ActionListener()
         {
 
+          @Override
           public void actionPerformed(ActionEvent ae)
           {
             loadFile(f, false);
@@ -606,7 +627,6 @@ public class MainView extends javax.swing.JFrame
 
   /**
    * update entries of objectComboBox, then update selection
-   * @param forceUpdate even update if the list of PlfParts has not changed
    * @throws RuntimeException if forceUpdate==false and PlfParts have not changed
    */
   public void refreshObjectComboBox()
@@ -1703,7 +1723,7 @@ public class MainView extends javax.swing.JFrame
     {
       PreferencesManager.getInstance().savePreferences();
     }
-    catch (Exception ex)
+    catch (IOException ex)
     {
       Logger.getLogger(MainView.class.getName()).log(Level.SEVERE, null, ex);
     }
@@ -1806,7 +1826,12 @@ public class MainView extends javax.swing.JFrame
       this.progressBar.setIndeterminate(false);
       this.refreshButtonStates(VisicutModel.PROP_PLF_PART_ADDED);
     }
-    catch (Exception e)
+    catch (ImportException e)
+    {
+      this.progressBar.setIndeterminate(false);
+      dialog.showErrorMessage(e, bundle.getString("ERROR WHILE OPENING '") + file.getName() + "'");
+    }
+    catch (IOException e)
     {
       this.progressBar.setIndeterminate(false);
       dialog.showErrorMessage(e, bundle.getString("ERROR WHILE OPENING '") + file.getName() + "'");
@@ -1815,6 +1840,7 @@ public class MainView extends javax.swing.JFrame
 
   /**
    * Sets all Buttons to their correct state (disabled/enabled)
+   * @param action
    */
   public void refreshButtonStates(String action)
   {
@@ -1915,6 +1941,7 @@ public class MainView extends javax.swing.JFrame
       openFileChooser.setFilenameFilter(new FilenameFilter()
       {
 
+        @Override
         public boolean accept(File dir, String file)
         {
           return allFilter.accept(new File(dir, file));
@@ -2102,9 +2129,13 @@ private void openMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-
         Desktop.getDesktop().browse(new URL(urlString).toURI());
       }
     }
-    catch (Exception e)
+    catch (IOException e)
     {
         e.printStackTrace();
+    }
+    catch (URISyntaxException e)
+    {
+      e.printStackTrace();
     }
   }
 
@@ -2152,12 +2183,14 @@ private void aboutMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN
           ProgressListener pl = new ProgressListener()
           {
 
+            @Override
             public void progressChanged(Object o, int i)
             {
               MainView.this.progressBar.setValue(i);
               MainView.this.progressBar.repaint();
             }
 
+            @Override
             public void taskChanged(Object o, String string)
             {
               MainView.this.progressBar.setString(string);
@@ -2305,7 +2338,7 @@ private void filesDropSupport1PropertyChange(java.beans.PropertyChangeEvent evt)
       {
         this.visicutModel1.saveToFile(MaterialManager.getInstance(), MappingManager.getInstance(), file);
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex, bundle.getString("ERROR SAVING FILE"));
       }
@@ -2410,7 +2443,7 @@ private void saveMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-
     {
       this.visicutModel1.saveToFile(MaterialManager.getInstance(), MappingManager.getInstance(), this.visicutModel1.getPlfFile().getFile());
     }
-    catch (Exception ex)
+    catch (IOException ex)
     {
       dialog.showErrorMessage(ex, bundle.getString("ERROR SAVING FILE"));
     }
@@ -2454,7 +2487,7 @@ private void calibrateCameraMenuItemActionPerformed(java.awt.event.ActionEvent e
   {
     LaserDeviceManager.getInstance().save(this.visicutModel1.getSelectedLaserDevice());
   }
-  catch (Exception ex)
+  catch (IOException ex)
   {
     dialog.showErrorMessage(ex, bundle.getString("ERROR WHILE SAVING SETTINGS"));
   }
@@ -2568,7 +2601,7 @@ private void executeJobMenuItemActionPerformed(java.awt.event.ActionEvent evt) {
                   msg = ex.toString();
                 }
               }
-              catch (Exception e)
+              catch (IOException e)
               {
                 e.printStackTrace();
                 if (e instanceof java.net.SocketException)
@@ -2648,7 +2681,7 @@ private void editMappingMenuItemActionPerformed(java.awt.event.ActionEvent evt) 
   {
     this.editMappings();
   }
-  catch (Exception ex)
+  catch (IOException ex)
   {
     dialog.showErrorMessage(ex);
   }
@@ -2682,7 +2715,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
         this.refreshMaterialComboBox();
         this.visicutModel1.setMaterial(this.materialComboBox.getSelectedItem() instanceof MaterialProfile ? (MaterialProfile) this.materialComboBox.getSelectedItem() : null);
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex);
       }
@@ -2742,7 +2775,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
           }
         }
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex, bundle.getString("ERROR SAVING PREFERENCES"));
       }
@@ -2766,7 +2799,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
           MainView.this.timeLabel.setText(Helper.toHHMMSS(MainView.this.visicutModel1.estimateTime(MainView.this.getPropertyMapForCurrentJob())));
           MainView.this.calculateTimeButton.setEnabled(true);
         }
-        catch (Exception ex)
+        catch (IOException ex)
         {
           dialog.showErrorMessage(ex);
           MainView.this.timeLabel.setText("error");
@@ -2841,7 +2874,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
         PreferencesManager.getInstance().exportSettings(file);
         dialog.showSuccessMessage(bundle.getString("SETTINGS SUCCESSFULLY EXPORTED"));
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex);
       }
@@ -2895,6 +2928,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
         openFileChooser.setFilenameFilter(new FilenameFilter()
         {
 
+          @Override
           public boolean accept(File dir, String file)
           {
             return zipFilter.accept(new File(dir, file));
@@ -2944,7 +2978,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
       {
         ProfileManager.getInstance().setAll(result);
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex);
       }
@@ -3010,7 +3044,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
         this.refreshMaterialComboBox();
         this.materialComboBox.setSelectedItem(m);
       }
-      catch (Exception ex)
+      catch (IOException ex)
       {
         dialog.showErrorMessage(ex);
       }
@@ -3024,7 +3058,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
       Helper.installInkscapeExtension();
       dialog.showSuccessMessage(bundle.getString("INSTALLED EXTENSION SUCCESSFULLY"));
     }
-    catch (Exception e)
+    catch (IOException e)
     {
       dialog.showErrorMessage(e, bundle.getString("THERE WAS AN ERROR DURING THE INSTALLATION"));
     }
@@ -3037,7 +3071,7 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
       Helper.installIllustratorScript();
       dialog.showSuccessMessage(bundle.getString("INSTALLED EXTENSION SUCCESSFULLY"));
     }
-    catch (Exception e)
+    catch (IOException e)
     {
       dialog.showErrorMessage(e, bundle.getString("THERE WAS AN ERROR DURING THE INSTALLATION"));
     }
@@ -3065,7 +3099,7 @@ private void btAddMaterialThicknessActionPerformed(java.awt.event.ActionEvent ev
     {
       MaterialManager.getInstance().save(m);
     }
-    catch (Exception ex)
+    catch (IOException ex)
     {
       dialog.showErrorMessage(ex, "Could not save material thickness");
     }
@@ -3089,7 +3123,7 @@ private void btAddMaterialThicknessActionPerformed(java.awt.event.ActionEvent ev
               LaserPropertyManager.getInstance().saveLaserProperties(ld, m, lp, f, clones);
             }
           }
-          catch (Exception ex)
+          catch (IOException ex)
           {
             dialog.showErrorMessage(ex, "Could not copy material thickness");
           }
@@ -3162,7 +3196,7 @@ private void jmPreferencesActionPerformed(java.awt.event.ActionEvent evt) {//GEN
       this.visicutModel1.setPreferences(pd.getPreferences());
       PreferencesManager.getInstance().savePreferences(pd.getPreferences());
     }
-    catch (Exception ex)
+    catch (IOException ex)
     {
       dialog.showErrorMessage(ex);
     }
@@ -3816,6 +3850,7 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
       m.setCloseListener(new ActionListener()
       {
 
+        @Override
         public void actionPerformed(ActionEvent ae)
         {
         }
@@ -3913,11 +3948,7 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
 
   private void laserJobStopped()
   {
-    // Check correct state
-    if (isLaserJobInProgress())
-    {
-      return;
-    }
+    //empty ?
   }
 
   public boolean isFabqrUploadDialogOpened()
