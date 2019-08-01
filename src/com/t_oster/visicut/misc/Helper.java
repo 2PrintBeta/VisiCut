@@ -43,6 +43,7 @@ import java.net.NetworkInterface;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
@@ -295,9 +296,9 @@ public class Helper
         String line = r.readLine();
         while (line != null)
         {
-          if ("VISICUTDIR=\"\"".equals(line))
+          if ("VISICUTDIR = \"\"".equals(line))
           {
-            line = "VISICUTDIR=r\""+getVisiCutFolder().getAbsolutePath()+"\"";
+            line = "VISICUTDIR = r\""+getVisiCutFolder().getAbsolutePath()+"\"";
           }
           w.write(line);
           w.newLine();
@@ -451,6 +452,23 @@ public class Helper
   public static String addBasePath(String path)
   {
     return addParentPath(getBasePath(), path);
+  }
+
+  /**
+   * Is basePath (the settings directory) controlled by a Version Control system
+   * such as git?
+   * @return
+   */
+  public static boolean basePathIsVersionControlled()
+  {
+    String[] vcsDirs = {".git", ".svn", ".hg"};
+    for (String vcsDir : vcsDirs)
+    {
+      if (new File(Helper.addBasePath(vcsDir)).exists()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

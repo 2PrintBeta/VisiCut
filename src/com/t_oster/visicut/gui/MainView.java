@@ -72,6 +72,7 @@ import com.frochr123.periodictasks.RefreshProjectorThread;
 import com.frochr123.periodictasks.RefreshQRCodesTask;
 import com.t_oster.visicut.Preferences;
 import com.t_oster.visicut.model.graphicelements.ImportException;
+import com.t_oster.visicut.misc.Homography;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FileDialog;
@@ -107,6 +108,7 @@ import java.net.URLClassLoader;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -162,51 +164,45 @@ public class MainView extends javax.swing.JFrame
     @Override
     public void showWarningMessage(String text)
     {
-      MainView.this.warningPanel.addMessage(new Message("Warning", text, Message.Type.WARNING, null));
+      MainView.this.warningPanel.addMessage(new Message(bundle.getString("WARNING"), text, Message.Type.WARNING, null));
     }
 
     @Override
     public void showWarningMessageOnce(String text, String messageId, int timeout)
     {
       // use timeout=-1 to disable timeout
-      MainView.this.warningPanel.addMessageOnce(new Message("Warning", text, Message.Type.WARNING, null, timeout), messageId);
+      MainView.this.warningPanel.addMessageOnce(new Message(bundle.getString("WARNING"), text, Message.Type.WARNING, null, timeout), messageId);
     }
 
     @Override
     public void showSuccessMessage(String text)
     {
-      MainView.this.warningPanel.addMessage(new Message("Success", text, Message.Type.SUCCESS, null, 10000));
+      MainView.this.warningPanel.addMessage(new Message(bundle.getString("SUCCESS"), text, Message.Type.SUCCESS, null, 10000));
     }
 
     @Override
     public void showInfoMessage(String text)
     {
-      MainView.this.warningPanel.addMessage(new Message("Info", text, Message.Type.INFO, null));
+      MainView.this.warningPanel.addMessage(new Message(bundle.getString("INFO"), text, Message.Type.INFO, null));
     }
 
     @Override
     public void showErrorMessage(Exception ex)
     {
-      Throwable cause = ex;
-      while ((cause.getMessage() == null || "".equals(cause.getMessage())) && cause.getCause() != null)
-      {
-        cause = cause.getCause();
-      }
-      cause.printStackTrace();
-      MainView.this.warningPanel.addMessage(new Message("Error", "Exception: " + cause.getLocalizedMessage(), Message.Type.ERROR, null));
+      this.showErrorMessage(ex, null);
     }
 
     @Override
     public void showErrorMessage(Exception cause, String text)
     {
       cause.printStackTrace();
-      MainView.this.warningPanel.addMessage(new Message("Error", text + ": " + cause.getLocalizedMessage(), Message.Type.ERROR, null));
+      this.showErrorMessage(DialogHelper.getHumanReadableErrorMessage(cause, text));
     }
 
     @Override
     public void showErrorMessage(String text)
     {
-      MainView.this.warningPanel.addMessage(new Message("Error", text, Message.Type.ERROR, null));
+      MainView.this.warningPanel.addMessage(new Message(bundle.getString("ERROR"), text, Message.Type.ERROR, null));
     }
 
     @Override
@@ -431,18 +427,44 @@ public class MainView extends javax.swing.JFrame
       }
     });
     //apply the saved window size and position, if in current screen size
+    // Note: the window size is saved at exit in MainView.exitMenuItemActionPerformed()
     Rectangle lastBounds = PreferencesManager.getInstance().getPreferences().getWindowBounds();
-    if (lastBounds != null && this.getGraphicsConfiguration().getBounds().contains(lastBounds))
+    Rectangle graphicsBounds = this.getGraphicsConfiguration().getBounds();
+    if (lastBounds != null && lastBounds.width <= graphicsBounds.width && lastBounds.height <= graphicsBounds.height)
     {
       this.setExtendedState(JFrame.NORMAL);
       this.setPreferredSize(new Dimension(lastBounds.width, lastBounds.height));
       this.setBounds(lastBounds);
+    } else {
+      // previous state was maximized (this is stored as "null"),
+      // or we failed to restore last position and fall back to maximized
+      this.setExtendedState(this.getExtendedState() | JFrame.MAXIMIZED_BOTH);
     }
 
     // all GUI parts are now initialised.
     if (LaserDeviceManager.getInstance().getAll().isEmpty())
     {
+      // no lasercutters present - ask for downloading settings
       this.jmDownloadSettingsActionPerformed(null);
+    } else {
+      // Ask for updating settings if they are old.
+      if (!Helper.basePathIsVersionControlled() // settings is not under version control
+        && visicutModel1.getPreferences().isAutoUpdateSettings() // auto-update is enabled
+        && !getRecommendedLab().equals("") // and we know where to download the settings
+        // and the last update is more than 14 days ago (or unknown)
+        && visicutModel1.getPreferences().getDaysSinceLastAutoUpdate() > 14)
+      {
+        // Ask: "Would you like to download updated settings?"
+        if (dialog.showYesNoQuestion(bundle.getString("UPDATE_SETTINGS")))
+        {
+          // TODO: We could skip some of the questions im jmDownloadSettingsActionPerfored.
+          // TODO: We could check if the remote file has actually changed and keep quiet otherwise.
+          // see https://www.hackdiary.com/2003/04/09/using-http-conditional-get-in-java-for-efficient-polling/
+          this.jmDownloadSettingsActionPerformed(null);
+        }
+        visicutModel1.getPreferences().resetLastAutoUpdateTime();
+      }
+
     }
 
     // Cleanup old temporary files, which might not have been deleted correctly
@@ -713,20 +735,23 @@ public class MainView extends javax.swing.JFrame
     jTextFieldJobName = new javax.swing.JTextField();
     calculateTimeButton = new javax.swing.JButton();
     timeLabel = new javax.swing.JLabel();
-    mappingTabbedPane = new javax.swing.JTabbedPane();
-    mappingPanel = new com.t_oster.visicut.gui.mapping.MappingPanel();
-    positionPanel = new com.t_oster.uicomponents.PositionPanel();
-    propertyPanelContainer = new javax.swing.JScrollPane();
-    propertiesPanel = new com.t_oster.visicut.gui.propertypanel.PropertiesPanel();
     btAddMaterial = new javax.swing.JButton();
     cbMaterialThickness = new javax.swing.JComboBox();
     btAddMaterialThickness = new javax.swing.JButton();
     jCheckBox1 = new javax.swing.JCheckBox();
+    jCheckBoxAutoFocus = new javax.swing.JCheckBox();
     executeJobButton = new javax.swing.JButton();
     objectComboBox = new javax.swing.JComboBox();
     jSeparator1 = new javax.swing.JSeparator();
     btRemoveObject = new javax.swing.JButton();
     btAddObject = new javax.swing.JButton();
+    jScrollPane3 = new javax.swing.JScrollPane();
+    jPanel4 = new javax.swing.JPanel();
+    mappingTabbedPane = new javax.swing.JTabbedPane();
+    mappingPanel = new com.t_oster.visicut.gui.mapping.MappingPanel();
+    positionPanel = new com.t_oster.uicomponents.PositionPanel();
+    propertyPanelContainer = new javax.swing.JScrollPane();
+    propertiesPanel = new com.t_oster.visicut.gui.propertypanel.PropertiesPanel();
     warningPanel = new com.t_oster.uicomponents.warnings.WarningPanel();
     jPanel1 = new javax.swing.JPanel();
     jButton2 = new javax.swing.JButton();
@@ -832,7 +857,7 @@ public class MainView extends javax.swing.JFrame
     );
     previewPanelLayout.setVerticalGroup(
       previewPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-      .addGap(0, 457, Short.MAX_VALUE)
+      .addGap(0, 566, Short.MAX_VALUE)
     );
 
     jScrollPane2.setViewportView(previewPanel);
@@ -894,22 +919,6 @@ public class MainView extends javax.swing.JFrame
     timeLabel.setText(resourceMap.getString("timeLabel.text")); // NOI18N
     timeLabel.setName("timeLabel"); // NOI18N
 
-    mappingTabbedPane.setName("Custom"); // NOI18N
-
-    mappingPanel.setName("mappingPanel"); // NOI18N
-    mappingTabbedPane.addTab(resourceMap.getString("mappingPanel.TabConstraints.tabTitle"), mappingPanel); // NOI18N
-
-    positionPanel.setName("positionPanel"); // NOI18N
-    mappingTabbedPane.addTab(resourceMap.getString("positionPanel.TabConstraints.tabTitle"), positionPanel); // NOI18N
-
-    propertyPanelContainer.setName("propertyPanelContainer"); // NOI18N
-
-    propertiesPanel.setName("propertiesPanel"); // NOI18N
-    propertiesPanel.setLayout(new javax.swing.BoxLayout(propertiesPanel, javax.swing.BoxLayout.Y_AXIS));
-    propertyPanelContainer.setViewportView(propertiesPanel);
-
-    mappingTabbedPane.addTab(resourceMap.getString("propertyPanelContainer.TabConstraints.tabTitle"), propertyPanelContainer); // NOI18N
-
     btAddMaterial.setIcon(PlatformIcon.get(PlatformIcon.ADD));
     btAddMaterial.setName("btAddMaterial"); // NOI18N
     btAddMaterial.addActionListener(new java.awt.event.ActionListener()
@@ -945,6 +954,19 @@ public class MainView extends javax.swing.JFrame
 
     org.jdesktop.beansbinding.Binding binding = org.jdesktop.beansbinding.Bindings.createAutoBinding(org.jdesktop.beansbinding.AutoBinding.UpdateStrategy.READ_WRITE, visicutModel1, org.jdesktop.beansbinding.ELProperty.create("${useThicknessAsFocusOffset}"), jCheckBox1, org.jdesktop.beansbinding.BeanProperty.create("selected"), "cbUseThickness");
     bindingGroup.addBinding(binding);
+
+    jCheckBoxAutoFocus.setText(resourceMap.getString("jCheckBoxAutoFocus.text")); // NOI18N
+    jCheckBoxAutoFocus.setToolTipText(resourceMap.getString("jCheckBoxAutoFocus.toolTipText")); // NOI18N
+    jCheckBoxAutoFocus.setName("jCheckBoxAutoFocus"); // NOI18N
+
+    jCheckBoxAutoFocus.addActionListener(new java.awt.event.ActionListener()
+    {
+      public void actionPerformed(java.awt.event.ActionEvent evt)
+      {
+        visicutModel1.setAutoFocusEnabled(jCheckBoxAutoFocus.isSelected());
+      }
+    });
+
 
     executeJobButton.setText(resourceMap.getString("executeJobButton.text")); // NOI18N
     executeJobButton.setName("executeJobButton"); // NOI18N
@@ -991,6 +1013,52 @@ public class MainView extends javax.swing.JFrame
       }
     });
 
+    jScrollPane3.setName("jScrollPane3"); // NOI18N
+
+    jPanel4.setName("jPanel4"); // NOI18N
+
+    mappingTabbedPane.setName("Custom"); // NOI18N
+
+    mappingPanel.setName("mappingPanel"); // NOI18N
+    mappingTabbedPane.addTab(resourceMap.getString("mappingPanel.TabConstraints.tabTitle"), mappingPanel); // NOI18N
+
+    positionPanel.setName("positionPanel"); // NOI18N
+    mappingTabbedPane.addTab(resourceMap.getString("positionPanel.TabConstraints.tabTitle"), positionPanel); // NOI18N
+
+    propertyPanelContainer.setName("propertyPanelContainer"); // NOI18N
+
+    propertiesPanel.setName("propertiesPanel"); // NOI18N
+    propertiesPanel.setLayout(new javax.swing.BoxLayout(propertiesPanel, javax.swing.BoxLayout.Y_AXIS));
+    propertyPanelContainer.setViewportView(propertiesPanel);
+
+    mappingTabbedPane.addTab(resourceMap.getString("propertyPanelContainer.TabConstraints.tabTitle"), propertyPanelContainer); // NOI18N
+
+    javax.swing.GroupLayout jPanel4Layout = new javax.swing.GroupLayout(jPanel4);
+    jPanel4.setLayout(jPanel4Layout);
+    jPanel4Layout.setHorizontalGroup(
+      jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+      .addGap(0, 0, Short.MAX_VALUE)
+      .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+        .addGroup(jPanel4Layout.createSequentialGroup()
+          .addGap(10, 10, 10)
+          .addComponent(mappingTabbedPane, javax.swing.GroupLayout.DEFAULT_SIZE, 529, Short.MAX_VALUE)
+          .addGap(10, 10, 10)))
+    );
+    jPanel4Layout.setVerticalGroup(
+      jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+      .addGap(0, 0, Short.MAX_VALUE)
+      .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+        .addGroup(jPanel4Layout.createSequentialGroup()
+          .addContainerGap()
+          .addComponent(mappingTabbedPane, javax.swing.GroupLayout.PREFERRED_SIZE, 471, javax.swing.GroupLayout.PREFERRED_SIZE)
+          .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+    );
+
+    java.util.ResourceBundle bundle1 = java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/MainView"); // NOI18N
+    mappingTabbedPane.getAccessibleContext().setAccessibleName(bundle1.getString("MAPPING")); // NOI18N
+
+    jScrollPane3.setViewportView(jPanel4);
+
     javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
     jPanel2.setLayout(jPanel2Layout);
     jPanel2Layout.setHorizontalGroup(
@@ -1003,31 +1071,30 @@ public class MainView extends javax.swing.JFrame
               .addGroup(jPanel2Layout.createSequentialGroup()
                 .addComponent(jLabelJobName)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextFieldJobName, javax.swing.GroupLayout.DEFAULT_SIZE, 168, Short.MAX_VALUE)
-                .addGap(199, 199, 199)
+                .addComponent(jTextFieldJobName)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(executeJobButton))
               .addGroup(jPanel2Layout.createSequentialGroup()
                 .addComponent(jLabel10)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(timeLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 166, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 199, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(calculateTimeButton)))
             .addContainerGap())
           .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
             .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-              .addComponent(mappingTabbedPane, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 514, Short.MAX_VALUE)
               .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel2Layout.createSequentialGroup()
                 .addComponent(jLabel2)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(objectComboBox, 0, 416, Short.MAX_VALUE)
+                .addComponent(objectComboBox, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btAddObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btRemoveObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE))
-              .addComponent(jSeparator1, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 514, Short.MAX_VALUE)
-              .addComponent(laserCutterComboBox, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 514, Short.MAX_VALUE)
+              .addComponent(jSeparator1, javax.swing.GroupLayout.Alignment.LEADING)
+              .addComponent(laserCutterComboBox, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
               .addGroup(jPanel2Layout.createSequentialGroup()
-                .addComponent(materialComboBox, javax.swing.GroupLayout.DEFAULT_SIZE, 477, Short.MAX_VALUE)
+                .addComponent(materialComboBox, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btAddMaterial, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE))
               .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel2Layout.createSequentialGroup()
@@ -1037,13 +1104,15 @@ public class MainView extends javax.swing.JFrame
                     .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                     .addComponent(btAddMaterialThickness, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE))
                   .addComponent(jLabel5))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 158, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                  .addComponent(jCheckBoxAutoFocus, javax.swing.GroupLayout.PREFERRED_SIZE, 197, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addComponent(jCheckBox1, javax.swing.GroupLayout.PREFERRED_SIZE, 197, javax.swing.GroupLayout.PREFERRED_SIZE))
               .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel2Layout.createSequentialGroup()
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                   .addComponent(jLabel9, javax.swing.GroupLayout.Alignment.LEADING)
                   .addComponent(jLabel1, javax.swing.GroupLayout.Alignment.LEADING))
-                .addGap(0, 454, Short.MAX_VALUE)))
+                .addGap(0, 0, Short.MAX_VALUE))
+              .addComponent(jScrollPane3))
             .addGap(20, 20, 20))))
     );
     jPanel2Layout.setVerticalGroup(
@@ -1067,19 +1136,20 @@ public class MainView extends javax.swing.JFrame
             .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
               .addComponent(cbMaterialThickness, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
               .addComponent(btAddMaterialThickness, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE)))
+            .addComponent(jCheckBoxAutoFocus, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
           .addComponent(jCheckBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
         .addComponent(jSeparator1, javax.swing.GroupLayout.PREFERRED_SIZE, 8, javax.swing.GroupLayout.PREFERRED_SIZE)
         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+          .addComponent(btRemoveObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE)
+          .addComponent(btAddObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE)
           .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
             .addComponent(objectComboBox)
-            .addComponent(jLabel2))
-          .addComponent(btRemoveObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE)
-          .addComponent(btAddObject, javax.swing.GroupLayout.PREFERRED_SIZE, 31, javax.swing.GroupLayout.PREFERRED_SIZE))
-        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-        .addComponent(mappingTabbedPane)
+            .addComponent(jLabel2)))
         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+        .addComponent(jScrollPane3, javax.swing.GroupLayout.DEFAULT_SIZE, 347, Short.MAX_VALUE)
+        .addGap(48, 48, 48)
         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
           .addComponent(timeLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
           .addComponent(jLabel10)
@@ -1091,9 +1161,6 @@ public class MainView extends javax.swing.JFrame
           .addComponent(executeJobButton))
         .addContainerGap())
     );
-
-    java.util.ResourceBundle bundle1 = java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/MainView"); // NOI18N
-    mappingTabbedPane.getAccessibleContext().setAccessibleName(bundle1.getString("MAPPING")); // NOI18N
 
     jScrollPane1.setViewportView(jPanel2);
 
@@ -1305,7 +1372,7 @@ public class MainView extends javax.swing.JFrame
     });
     fileMenu.add(saveAsMenuItem);
 
-    exportGcodeMenuItem.setText("Export Laser Code..."); // NOI18N
+    exportGcodeMenuItem.setText(resourceMap.getString("exportGcodeMenuItem.text"));
     exportGcodeMenuItem.setName("exportGcodeMenuItem"); // NOI18N
     exportGcodeMenuItem.addActionListener(new java.awt.event.ActionListener()
     {
@@ -1662,17 +1729,17 @@ public class MainView extends javax.swing.JFrame
       .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
         .addGap(0, 0, 0)
         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-          .addComponent(warningPanel, javax.swing.GroupLayout.DEFAULT_SIZE, 556, Short.MAX_VALUE)
+          .addComponent(warningPanel, javax.swing.GroupLayout.DEFAULT_SIZE, 545, Short.MAX_VALUE)
           .addGroup(layout.createSequentialGroup()
             .addGap(2, 2, 2)
             .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
               .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, 408, Short.MAX_VALUE)
+                .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, 397, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jPanel3, javax.swing.GroupLayout.PREFERRED_SIZE, 140, javax.swing.GroupLayout.PREFERRED_SIZE))
               .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE))))
         .addGap(18, 18, 18)
-        .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 563, Short.MAX_VALUE)
+        .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 574, Short.MAX_VALUE)
         .addGap(0, 0, 0))
     );
     layout.setVerticalGroup(
@@ -1680,16 +1747,16 @@ public class MainView extends javax.swing.JFrame
       .addGroup(layout.createSequentialGroup()
         .addGap(0, 0, 0)
         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-          .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
+          .addComponent(jScrollPane1)
           .addGroup(layout.createSequentialGroup()
             .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
               .addComponent(jPanel3, javax.swing.GroupLayout.PREFERRED_SIZE, 45, javax.swing.GroupLayout.PREFERRED_SIZE)
               .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, 45, javax.swing.GroupLayout.PREFERRED_SIZE))
             .addGap(8, 8, 8)
-            .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 497, Short.MAX_VALUE)
+            .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 604, Short.MAX_VALUE)
             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-            .addComponent(warningPanel, javax.swing.GroupLayout.DEFAULT_SIZE, 185, Short.MAX_VALUE)))
-        .addContainerGap())
+            .addComponent(warningPanel, javax.swing.GroupLayout.DEFAULT_SIZE, 246, Short.MAX_VALUE)
+            .addContainerGap())))
     );
 
     bindingGroup.bind();
@@ -1698,7 +1765,12 @@ public class MainView extends javax.swing.JFrame
   }// </editor-fold>//GEN-END:initComponents
 
     private void exitMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_exitMenuItemActionPerformed
-      PreferencesManager.getInstance().getPreferences().setWindowBounds(MainView.this.getBounds());
+      Rectangle bounds = this.getBounds();
+      if ((this.getExtendedState() & MAXIMIZED_BOTH) == MAXIMIZED_BOTH) {
+        // window is maximized, store this as "null"
+        bounds = null;
+      }
+      PreferencesManager.getInstance().getPreferences().setWindowBounds(bounds);
       this.visicutModel1.updatePreferences();
       System.exit(0);
     }//GEN-LAST:event_exitMenuItemActionPerformed
@@ -1852,6 +1924,8 @@ public class MainView extends javax.swing.JFrame
 
       this.calibrateCameraMenuItem.setEnabled(cam);
       this.cameraActiveMenuItem.setEnabled(cam);
+
+      MainView.this.visicutModel1.setBackgroundImage(null); // hide camera image until a new one has been fetched
       previewPanel.setShowBackgroundImage(cam);
       setCameraActive(cam);
 
@@ -1868,25 +1942,37 @@ public class MainView extends javax.swing.JFrame
     if (this.visicutModel1.getSelectedLaserDevice() != null)
     {
       LaserCutter lc = this.visicutModel1.getSelectedLaserDevice().getLaserCutter();
-      for (LaserProperty p : new LaserProperty[]
+      if (lc.getProperty("SoftwareFocusNotSupported") != null) {
+        focusSupported = !(Boolean) lc.getProperty("SoftwareFocusNotSupported");
+      } else {
+        for (LaserProperty p : new LaserProperty[]
+          {
+            lc.getLaserPropertyForVectorPart(),
+            lc.getLaserPropertyForRasterPart(),
+            lc.getLaserPropertyForRaster3dPart()
+          })
         {
-          lc.getLaserPropertyForVectorPart(),
-          lc.getLaserPropertyForRasterPart(),
-          lc.getLaserPropertyForRaster3dPart()
-        })
-      {
-        if (p != null && Arrays.asList(p.getPropertyKeys()).contains("focus"))
-        {
-          focusSupported = true;
-          break;
+          if (p != null && Arrays.asList(p.getPropertyKeys()).contains("focus"))
+          {
+            focusSupported = true;
+            break;
+          }
         }
+      }
+      if (lc.isAutoFocus()) {
+        // Display the autofocus setting as retained in VisicutModel
+        this.jCheckBoxAutoFocus.setSelected(visicutModel1.isAutoFocusEnabled());
+        this.jCheckBoxAutoFocus.setVisible(true);
+      } else {
+        this.jCheckBoxAutoFocus.setVisible(false);
       }
     }
     if (!focusSupported || (MaterialManager.getInstance().getAll().size() == 1 && MaterialManager.getInstance().getAll().get(0).getMaterialThicknesses().size() == 1))
     {
       this.jCheckBox1.setSelected(false);
       this.jCheckBox1.setVisible(false);
-      this.jSeparator1.setVisible(this.laserCutterComboBox.isVisible());
+      this.jSeparator1.setVisible(this.laserCutterComboBox.isVisible() ||
+          this.jCheckBoxAutoFocus.isVisible());
     }
     else
     {
@@ -2241,6 +2327,7 @@ private void aboutMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN
             }
             List<String> warnings = new LinkedList<String>();
             MainView.this.visicutModel1.sendJob(jobname, pl, cuttingSettings, warnings);
+
             for (String w : warnings)
             {
               dialog.showWarningMessage(w);
@@ -2456,11 +2543,6 @@ private void newMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-F
 }//GEN-LAST:event_newMenuItemActionPerformed
 
 private void calibrateCameraMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_calibrateCameraMenuItemActionPerformed
-  if (this.visicutModel1.getBackgroundImage() == null)
-  {
-    dialog.showErrorMessage(bundle.getString("THE CAMERA DOESN'T SEEM TO BE WORKING. PLEASE CHECK THE URL IN THE LASERCUTTER SETTINGS"));
-    return;
-  }
   List<VectorProfile> profiles = ProfileManager.getInstance().getVectorProfiles();
   if (profiles.isEmpty())
   {
@@ -2474,10 +2556,7 @@ private void calibrateCameraMenuItemActionPerformed(java.awt.event.ActionEvent e
   }
   //TODO ask user for VectorProfile and make sure the properties for current
   //material and cutter are available
-  CamCalibrationDialog ccd = new CamCalibrationDialog(this, true);
-  ccd.setVectorProfile(p);
-  ccd.setImageURL(getVisiCam());
-  ccd.fetchFreshImage();
+  CamCalibrationDialog ccd = new CamCalibrationDialog(this, true, p, getVisiCam());
   if (this.visicutModel1.getSelectedLaserDevice().getCameraCalibration() != null) {
     ccd.setCorrespondencePoints(this.visicutModel1.getSelectedLaserDevice().getCameraCalibration().getViewPoints());
   }
@@ -2491,6 +2570,7 @@ private void calibrateCameraMenuItemActionPerformed(java.awt.event.ActionEvent e
   {
     dialog.showErrorMessage(ex, bundle.getString("ERROR WHILE SAVING SETTINGS"));
   }
+  captureImage();
   this.previewPanel.repaint();
 }//GEN-LAST:event_calibrateCameraMenuItemActionPerformed
 
@@ -2530,30 +2610,34 @@ private void executeJobMenuItemActionPerformed(java.awt.event.ActionEvent evt) {
 
             ImageInputStream stream = new MemoryCacheImageInputStream(conn.getInputStream());
             BufferedImage back = ImageIO.read(stream);
-            if (back != null && MainView.this.visicutModel1.getBackgroundImage() == null)
-            {//First Time Image is Captured => resize View
-              // TODO also called when image reappears after error, while the user is moving some object around -- not so good. Put this call somewhere else.
-              // MainView.this.previewPanel.setZoom(100d);
-            }
-
-            // Check again if camera and background are active, might have changed in the meantime, because of threading
-            if (back != null && isCameraActive() && isPreviewPanelShowBackgroundImage())
-            {
-              LaserDevice ld = visicutModel1.getSelectedLaserDevice();
-              if (ld.getCameraCalibration() != null) {
-                // Do the homography mapping in this thread, off the UI thread, to avoid jank.
-                // It also simplifies things if the background image stored in the main view is already corrected.
-                long start = System.currentTimeMillis();
-                correctedBackgroundImage = ld.getCameraCalibration().correct(back, ld.getLaserCutter().getBedWidth(), ld.getLaserCutter().getBedHeight(), correctedBackgroundImage);
-                MainView.this.visicutModel1.setBackgroundImage(correctedBackgroundImage);
-                try {
-                  // Don't use more than 1/4 of the CPU time calculating this
-                  Thread.sleep((System.currentTimeMillis() - start) * 3);
-                } catch (InterruptedException e) { }
-              } else {
-                MainView.this.visicutModel1.setBackgroundImage(back);
+            if (back == null) {
+              if (conn.getHeaderFields().containsKey("Location")) {
+                // URLConnection does not follow cross-protocol redirects, e.g. from HTTP to HTTPS.
+                // Then, we'll get stuck here.
+                // https://stackoverflow.com/questions/1884230/urlconnection-doesnt-follow-redirect
+                throw new Exception("Did not receive a camera image, but only a HTTP/S redirect. Please use the actual URL instead: " + conn.getHeaderField("Location"));
               }
+              throw new Exception("Cannot read camera image: invalid format or empty file. Please make sure the camera URL returns a valid JPEG or PNG image.");
             }
+            LaserDevice ld = visicutModel1.getSelectedLaserDevice();
+            if (ld == null || !isCameraActive() || !isPreviewPanelShowBackgroundImage()) {
+              // no camera image requested
+              cameraCapturingError = "";
+              return;
+            }
+            Homography cameraCalibration = ld.getCameraCalibration();
+            if (cameraCalibration == null) {
+              throw new Exception(bundle.getString("CAMERA_NOT_YET_CALIBRATED"));
+            }
+            // Do the homography mapping in this thread, off the UI thread, to avoid jank.
+            // It also simplifies things if the background image stored in the main view is already corrected.
+            long start = System.currentTimeMillis();
+            correctedBackgroundImage = ld.getCameraCalibration().correct(back, ld.getLaserCutter().getBedWidth(), ld.getLaserCutter().getBedHeight(), correctedBackgroundImage);
+            MainView.this.visicutModel1.setBackgroundImage(correctedBackgroundImage);
+            try {
+              // Don't use more than 1/4 of the CPU time calculating this
+              Thread.sleep((System.currentTimeMillis() - start) * 3);
+            } catch (InterruptedException e) { }
             cameraCapturingError = "";
           }
           catch (Exception ex)
@@ -2603,18 +2687,7 @@ private void executeJobMenuItemActionPerformed(java.awt.event.ActionEvent evt) {
               }
               catch (IOException e)
               {
-                e.printStackTrace();
-                if (e instanceof java.net.SocketException)
-                {
-                  // Network errors like "port not found" have meaningful error messages
-                  msg = e.getLocalizedMessage();
-                }
-                else
-                {
-                  // Most other exceptions are not easy to understand without the class name
-                  // (e.g. 'java.net.UnknownHostException: foo.example.com')
-                  msg = ex.getClass().getSimpleName() + ": " + ex.getLocalizedMessage();
-                }
+                msg = DialogHelper.getHumanReadableErrorMessage(e);
               }
               if (responseCode != 0)
               {
@@ -2635,7 +2708,7 @@ private void executeJobMenuItemActionPerformed(java.awt.event.ActionEvent evt) {
             }
             else
             {
-              cameraCapturingError = bundle.getString("ERROR CAPTURING PHOTO") + "\nError (" + ex.getClass().getSimpleName() + "): " + ex.getLocalizedMessage();
+              cameraCapturingError = DialogHelper.getHumanReadableErrorMessage(ex, bundle.getString("ERROR CAPTURING PHOTO"));
             }
           }
 
@@ -2667,13 +2740,13 @@ private void executeJobMenuItemActionPerformed(java.awt.event.ActionEvent evt) {
   @Action
   public void zoomIn()
   {
-    previewPanel.setZoom(previewPanel.getZoom() - (-2 * previewPanel.getZoom() / 32));
+    previewPanel.setZoom((int) (previewPanel.getZoom() * 1.3));
   }
 
   @Action
   public void zoomOut()
   {
-    previewPanel.setZoom(previewPanel.getZoom() - (2 * previewPanel.getZoom() / 32));
+    previewPanel.setZoom((int) (previewPanel.getZoom() / 1.3));
   }
 
 private void editMappingMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_editMappingMenuItemActionPerformed
@@ -2890,9 +2963,38 @@ private void materialComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//
   {
     PreferencesManager.getInstance().importSettings(file);
     this.visicutModel1.setPreferences(PreferencesManager.getInstance().getPreferences());
+    // unset the lab name for auto-updates. Will be reset in importSettingsFromWeb,
+    // if the update was loaded from the web (and not a local file).
+    this.visicutModel1.getPreferences().setLastAutoUpdateLabName("");
     this.fillComboBoxes();
     this.refreshExampleMenu();
     dialog.showSuccessMessage(bundle.getString("SETTINGS SUCCESSFULLY IMPORTED"));
+  }
+
+  /**
+   * Import Lasercutter settings from the web
+   * @param url HTTP(s) URL
+   * @param labName Name of FabLab to be preselected when the dialog
+   * "Download recommended settings" is opened the next time (may be empty).
+   * @throws Exception
+   */
+  private void importSettingsFromWeb(String url, String labName) throws Exception {
+    if (!(url.startsWith("https://") || url.startsWith("http://")))
+    {
+      throw new FileNotFoundException("illegal start of URL");
+    }
+    File tempfile = File.createTempFile("vcsettings-download", ".zip");
+    FileUtils.downloadUrlToFile(url, tempfile);
+    this.importSettingsFromFile(tempfile);
+    tempfile.delete();
+    // enable the automatic update of preferences:
+    // The user downloaded the preferences from the web, so in most cases it's
+    // desired to download updates (and discard local changes). Because the person
+    // who exported the preferences will probably have disabled auto-updates, we
+    // re-enable them here.
+    this.visicutModel1.getPreferences().setAutoUpdateSettings(true);
+    this.visicutModel1.getPreferences().setLastAutoUpdateLabName(labName);
+    this.visicutModel1.getPreferences().resetLastAutoUpdateTime();
   }
 
   private void jmImportSettingsActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_jmImportSettingsActionPerformed
@@ -3411,45 +3513,96 @@ private void jmPreferencesActionPerformed(java.awt.event.ActionEvent evt) {//GEN
     }
   }
 
+  /**
+   * Guess the recommended lab for downloading settings, based on last download
+   * URL or the local hostname.
+   * @return URL or selection key for jmDownloadSettingsActionPerformed, or "" if unknown.
+   */
+  private String getRecommendedLab() {
+
+    // Get default choice from last download
+    if (visicutModel1.getPreferences().getLastAutoUpdateLabName() != null) {
+      return visicutModel1.getPreferences().getLastAutoUpdateLabName();
+    }
+
+    // Otherwise:
+    // Get localhost FQDN for auto-detecting the lab, at least on computers owned by the lab.
+    String hostname = "";
+    try
+    {
+      hostname = InetAddress.getLocalHost().getCanonicalHostName();
+    }
+    catch (UnknownHostException ex)
+    {
+      // Cannot get local hostname -- ignore exception
+    }
+
+    // initial guess from local hostname. Will be used if the URL is not known
+    // (first startup, or preferences from before December 2018 when
+    //  remembering the URL was implemented)
+    if (hostname.endsWith(".fau.de") || hostname.endsWith(".uni-erlangen.de")) {
+      return "Germany, Erlangen: FAU FabLab";
+    }
+
+    return ""; // unknown
+  }
+
+  /***
+   * "Download recommended settings" menu item clicked
+   * @param evt
+   */
 private void jmDownloadSettingsActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jmDownloadSettingsActionPerformed
   warningPanel.removeAllWarnings();
+  // Refuse download (overwrite) if the settings directory is a version control (git) repository
+  if (Helper.basePathIsVersionControlled()) {
+    dialog.showErrorMessage(bundle.getString("SETTINGS_DIR_IS_VCS_REPOSITORY") + "\n" + Helper.getBasePath());
+    return;
+  }
+
   Map<String, String> choices = new LinkedHashMap<String, String>();
   choices.put(bundle.getString("EXAMPLE_SETTINGS"), "__DEFAULT__");
-  Object defaultChoice = choices.keySet().toArray()[0];
+  Object defaultChoice = getRecommendedLab();
+  if ("".equals(defaultChoice)) {
+    defaultChoice = choices.keySet().toArray()[0];
+  }
   choices.put(bundle.getString("EMPTY_SETTINGS"), "__EMPTY__");
   choices.put(bundle.getString("IMPORT_SETTINGS_FROM_FILE"), "__FILE__");
 
-  // Get FQDN for auto-detecting the lab, at least on computers owned by the lab.
-  String hostname = "";
-  try
-  {
-    hostname = InetAddress.getLocalHost().getCanonicalHostName();
-  }
-  catch (UnknownHostException ex)
-  {
-    // Cannot get local hostname -- ignore exception
-  }
 
   // Want your lab in this list? Look at https://github.com/t-oster/VisiCut/wiki/How-to-add-default-settings-for-your-lab !
   // choices.put("Country, City: Institution", "https://example.org/foo.zip");
+  // also have a look at getRecommendedLab() if you want your lab to be suggested for all PCs in your local network.
+  // The list is sorted alphabetically.
+  choices.put("China, Hong Kong: Renaissance College Hong Kong", "https://github.com/RCHK-DT/visicut-settings/archive/master.zip");
+  choices.put("France, Chemillé en Anjou : FabLab le Boc@l", "https://github.com/bocal-chemille/Visicut/raw/master/config_laser_bocal.vcsettings");
+  choices.put("France, Le Mans: HAUM Hackerspace", "https://github.com/haum/visicut-settings/archive/master.zip");
   choices.put("Germany, Aachen: FabLab RWTH Aachen", "https://github.com/renebohne/zing6030-visicut-settings/archive/master.zip");
-  choices.put("Germany, Erlangen: FAU FabLab", "https://github.com/fau-fablab/visicut-settings/archive/master.zip");
-  if (hostname.endsWith(".fau.de") || hostname.endsWith(".uni-erlangen.de")) {
-    defaultChoice = "Germany, Erlangen: FAU FabLab";
-  }
-  choices.put("Germany, Nuremberg: Fab lab Region Nürnberg e.V.", "https://github.com/fablabnbg/visicut-settings/archive/master.zip");
   choices.put("Germany, Berlin: Fab Lab Berlin", "https://github.com/FabLabBerlin/visicut-settings/archive/master.zip");
   choices.put("Germany, Bremen: FabLab Bremen e.V.", "http://www.fablab-bremen.org/FabLab_Bremen.vcsettings");
-  choices.put("Germany, Paderborn: FabLab Paderborn e.V.", "https://github.com/fablab-paderborn/visicut-settings/archive/master.zip");
+  choices.put("Germany, Dresden: Konglomerat e.V.", "https://github.com/konglomerat/visicut-settings/archive/master.zip");
+  choices.put("Germany, Dresden: Makerspace Dresden", "https://github.com/Makerspace-Dresden/visicut-settings/archive/master.zip");
+  choices.put("Germany, Erlangen: FAU FabLab", "https://github.com/fau-fablab/visicut-settings/archive/master.zip");
   choices.put("Germany, Heidelberg: Heidelberg Makerspace", "https://github.com/heidelberg-makerspace/visicut-settings/archive/master.zip");
+  choices.put("Germany, Nuremberg: Fab lab Region Nürnberg e.V.", "https://github.com/fablabnbg/visicut-settings/archive/master.zip");
+  choices.put("Germany, Paderborn: FabLab Paderborn e.V.", "https://github.com/fablab-paderborn/visicut-settings/archive/master.zip");
+  choices.put("Germany, Veitsbronn: FabLab Landkreis Fürth e.V.", "https://github.com/falafue/visicut-settings/archive/master.zip");
   choices.put("Netherlands, Amersfoort: FabLab", "https://github.com/Fablab-Amersfoort/visicut-settings/archive/master.zip");
   choices.put("Netherlands, Enschede: TkkrLab", "https://github.com/TkkrLab/visicut-settings/archive/master.zip");
-  choices.put("United Kingdom, Manchester: Hackspace", "https://github.com/hacmanchester/visicut-settings/archive/master.zip");
   choices.put("United Kingdom, Leeds: Hackspace", "https://github.com/leedshackspace/visicut-settings/archive/master.zip");
+  choices.put("United Kingdom, Manchester: Hackspace", "https://github.com/hacmanchester/visicut-settings/archive/master.zip");
   choices.put(bundle.getString("DOWNLOAD_NOT_IN_LIST"), "__HELP__");
+
+
+
   String s = (String) JOptionPane.showInputDialog(this, bundle.getString("DOWNLOAD_SETTINGS_INFO"), null, JOptionPane.PLAIN_MESSAGE, null, choices.keySet().toArray(), defaultChoice);
   if ((s == null) || (s.length() == 0))
   {
+    return;
+  }
+  if ("__HELP__".equals(choices.get(s)))
+  {
+    dialog.showInfoMessage("Please look at https://github.com/t-oster/VisiCut/wiki/How-to-add-default-settings-for-your-lab . \n You can reopen this dialog in Edit -> Settings -> Download.");
+    openWebpage("https://github.com/t-oster/VisiCut/wiki/How-to-add-default-settings-for-your-lab");
     return;
   }
   if (!askForOverwriteSettings())
@@ -3468,11 +3621,6 @@ private void jmDownloadSettingsActionPerformed(java.awt.event.ActionEvent evt) {
         this.importSettingsFromFile(null);
         return;
       }
-      else if (url.equals("__HELP__"))
-      {
-        dialog.showInfoMessage("Please look at https://github.com/t-oster/VisiCut/wiki/How-to-add-default-settings-for-your-lab . \n You can reopen this dialog in Edit -> Settings -> Download.");
-        return;
-      }
       else if (url.equals("__FILE__"))
       {
         this.importSettingsAskForFile();
@@ -3484,15 +3632,7 @@ private void jmDownloadSettingsActionPerformed(java.awt.event.ActionEvent evt) {
         return;
       }
     }
-    if (!(url.startsWith("https://") || url.startsWith("http://")))
-    {
-      dialog.showErrorMessage("Invalid URL or entry");
-      return;
-    }
-    File tempfile = File.createTempFile("vcsettings-download", ".zip");
-    FileUtils.downloadUrlToFile(url, tempfile);
-    this.importSettingsFromFile(tempfile);
-    tempfile.delete();
+    this.importSettingsFromWeb(url, s);
   }
   catch (Exception e)
   {
@@ -3576,6 +3716,7 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
   private javax.swing.JButton jButton1;
   private javax.swing.JButton jButton2;
   private javax.swing.JCheckBox jCheckBox1;
+  private javax.swing.JCheckBox jCheckBoxAutoFocus;
   private javax.swing.JLabel jLabel1;
   private javax.swing.JLabel jLabel10;
   private javax.swing.JLabel jLabel2;
@@ -3587,8 +3728,10 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
   private javax.swing.JPanel jPanel1;
   private javax.swing.JPanel jPanel2;
   private javax.swing.JPanel jPanel3;
+  private javax.swing.JPanel jPanel4;
   private javax.swing.JScrollPane jScrollPane1;
   private javax.swing.JScrollPane jScrollPane2;
+  private javax.swing.JScrollPane jScrollPane3;
   private javax.swing.JSeparator jSeparator1;
   private javax.swing.JPopupMenu.Separator jSeparator10;
   private javax.swing.JPopupMenu.Separator jSeparator2;
@@ -3671,6 +3814,8 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
   private Map<LaserProfile, List<LaserProperty>> getPropertyMapForCurrentJob()
   {
     Map<LaserProfile, List<LaserProperty>> result = this.propertiesPanel.getPropertyMap();
+    Map<LaserProfile, Double> newMap = new HashMap<LaserProfile, Double>();
+
     for (LaserProfile lp : result.keySet())
     {
       if (lp == null)//ignore-profile
@@ -3695,12 +3840,15 @@ private void projectorActiveMenuItemActionPerformed(java.awt.event.ActionEvent e
           return null;
         }
         //changing the DPI changes the hash-code, so we have to
-        //remove and re-assign the profile to the map
-        List<LaserProperty> val = result.get(lp);
-        result.remove(lp);
-        lp.setDPI(res);
-        result.put(lp, val);
+        //remove and re-assign the profile to the map after iteration.
+        newMap.put(lp, res);
       }
+    }
+    for (LaserProfile lp : newMap.keySet()) {
+      List<LaserProperty> val = result.get(lp);
+      result.remove(lp);
+      lp.setDPI(newMap.get(lp));
+      result.put(lp, val);
     }
     return result;
   }

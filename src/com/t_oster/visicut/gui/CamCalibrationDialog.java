@@ -36,6 +36,7 @@ import com.t_oster.visicut.misc.Homography;
 import com.t_oster.visicut.model.LaserDevice;
 import com.t_oster.visicut.model.VectorProfile;
 import com.t_oster.uicomponents.PlatformIcon;
+import com.t_oster.visicut.misc.DialogHelper;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.NoninvertibleTransformException;
@@ -44,6 +45,7 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
@@ -60,25 +62,6 @@ public class CamCalibrationDialog extends javax.swing.JDialog
 
   protected String imageURL = null;
 
-  /**
-   * Get the value of imageURL
-   *
-   * @return the value of imageURL
-   */
-  public String getImageURL()
-  {
-    return imageURL;
-  }
-
-  /**
-   * Set the value of imageURL
-   *
-   * @param imageURL new value of imageURL
-   */
-  public void setImageURL(String imageURL)
-  {
-    this.imageURL = imageURL;
-  }
 
   protected BufferedImage backgroundImage = null;
   public static final String PROP_BACKGROUNDIMAGE = "backgroundImage";
@@ -96,6 +79,7 @@ public class CamCalibrationDialog extends javax.swing.JDialog
     new Point2D.Double(0.7d, 0.5d), // mid right
   };
 
+  final protected DialogHelper dialog = new DialogHelper(this, this.getTitle());
 
   /**
    * Get the value of backgroundImage
@@ -135,6 +119,9 @@ public class CamCalibrationDialog extends javax.swing.JDialog
           if (src != null)
           {
             URLConnection conn = src.openConnection();
+            conn.setConnectTimeout(5 * 1000); // 5s connect timeout
+            conn.setReadTimeout(30 * 1000); // 30s read timeout after connecting
+
 
             // HTTP authentication
             if (VisicutModel.getInstance() != null && VisicutModel.getInstance().getSelectedLaserDevice() != null)
@@ -153,7 +140,7 @@ public class CamCalibrationDialog extends javax.swing.JDialog
         }
         catch (Exception ex)
         {
-          JOptionPane.showMessageDialog(CamCalibrationDialog.this, java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR LOADING IMAGE:") + ex.getLocalizedMessage(), java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR"), JOptionPane.ERROR_MESSAGE);
+          dialog.showErrorMessage(ex, java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR LOADING IMAGE:"));
         }
   }
 
@@ -166,6 +153,9 @@ public class CamCalibrationDialog extends javax.swing.JDialog
 
   private void refreshImagePoints()
   {
+    if (backgroundImage == null) {
+      return;
+    }
     int numPriorPoints = 0;
     if (modifiedImagePoints == null) {
       modifiedImagePoints = new Point2D.Double[numAlignmentPoints];
@@ -210,10 +200,6 @@ public class CamCalibrationDialog extends javax.swing.JDialog
   }
 
   private VectorProfile profile = null;
-  public void setVectorProfile(VectorProfile p)
-  {
-    this.profile = p;
-  }
 
   public void setCorrespondencePoints(Point2D.Double[] points) {
     confirmedImagePoints = points;
@@ -225,21 +211,26 @@ public class CamCalibrationDialog extends javax.swing.JDialog
 
   public CamCalibrationDialog()
   {
-    this(null, true);
+    this(null, true, null, "");
   }
 
   /** Creates new form CamCalibrationDialog */
-  public CamCalibrationDialog(java.awt.Frame parent, boolean modal)
+  public CamCalibrationDialog(java.awt.Frame parent, boolean modal, VectorProfile profile, String imageURL)
   {
     super(parent, modal);
     initComponents();
+    this.profile = profile;
+    this.imageURL = imageURL;
     LaserCutter lc = VisicutModel.getInstance().getSelectedLaserDevice().getLaserCutter();
     alignmentPoints = new Point2D.Double[alignmentPointsDefaults.length];
     for (int i = 0; i < alignmentPointsDefaults.length; i++) {
       alignmentPoints[i] = new Point2D.Double(alignmentPointsDefaults[i].x * lc.getBedWidth(),
           alignmentPointsDefaults[i].y * lc.getBedHeight());
     }
+
     this.calibrationPanel1.setAreaSize(new Point2D.Double(lc.getBedWidth(), lc.getBedHeight()));
+    this.fetchFreshImage();
+    this.alignmentPointsComboItemStateChanged(null); // implies refreshImagePoints()
   }
 
   /** This method is called from within the constructor to
@@ -427,7 +418,14 @@ private void sendButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FI
       throw new Exception(java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("NO LASERCUTTER SELECTED"));
     }
     VectorPart vp = null;
-    for (LaserProperty lp : LaserPropertyManager.getInstance().getLaserProperties(laserDevice, vm.getMaterial(), profile, vm.getMaterialThickness()))
+    if (vm.getMaterial() == null) {
+      throw new Exception(java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("NO MATERIAL SELECTED"));
+    }
+    List<LaserProperty> laserProperties = LaserPropertyManager.getInstance().getLaserProperties(laserDevice, vm.getMaterial(), profile, vm.getMaterialThickness());
+    if (laserProperties == null) {
+      throw new Exception(java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("NO LASER SETTINGS FOR THIS MATERIAL"));
+    }
+    for (LaserProperty lp : laserProperties)
     {
       if (vp == null)
       {
@@ -466,7 +464,7 @@ private void sendButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FI
   }
   catch (Exception e)
   {
-    JOptionPane.showMessageDialog(this, java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR SENDING PAGE: ") + e.getLocalizedMessage(), java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR"), JOptionPane.ERROR_MESSAGE);
+    dialog.showErrorMessage(e, java.util.ResourceBundle.getBundle("com/t_oster/visicut/gui/resources/CamCalibrationDialog").getString("ERROR SENDING PAGE: "));
   }
 }//GEN-LAST:event_sendButtonActionPerformed
 

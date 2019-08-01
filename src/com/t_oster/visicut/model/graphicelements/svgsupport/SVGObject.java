@@ -26,6 +26,7 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +76,6 @@ public abstract class SVGObject implements GraphicObject
    * applies all transformations in the Path of the SVGShape
    * and returns the Transformed Shape, which can be displayed
    * or printed on the position it appears in the original image.
-   * @param selectedSVGElement
    * @return 
    */
   public AffineTransform getAbsoluteTransformation() throws SVGException
@@ -83,11 +83,13 @@ public abstract class SVGObject implements GraphicObject
     if (this.getDecoratee() != null)
     {
       AffineTransform tr = new AffineTransform();
-      for (Object o : this.getPathToRoot())
+      List<SVGElement> pathToRoot = this.getPathToRoot();
+      Collections.reverse(pathToRoot);
+      for (Object o : pathToRoot)
       {
         if (o instanceof Group)
         {
-          StyleAttribute sty = new StyleAttribute("transform"); 
+          StyleAttribute sty = new StyleAttribute("transform");
           if (((SVGElement) o).getPres(sty))
           {
             String value = sty.getStringValue();
@@ -97,8 +99,7 @@ public abstract class SVGObject implements GraphicObject
               if (!"".equals(v))
               {
                 AffineTransform trans = SVGElement.parseSingleTransform(v+")");
-                trans.concatenate(tr);
-                tr = trans;
+                tr.concatenate(trans);
               }
             }
           }
@@ -183,15 +184,17 @@ public abstract class SVGObject implements GraphicObject
     attributeValues.put(name, result);
     return result;
   }
-  private List<String> attributes = null;
+
+  // cached return value of getAttributes()
+  private List<String> attributesCache = null;
 
   public List<String> getAttributes()
   {
-    if (attributes != null)
+    if (attributesCache != null)
     {
-      return attributes;
+      return attributesCache;
     }
-    attributes = new LinkedList<String>();
+    LinkedList<String> attributes = new LinkedList<String>();
     for (Attribute a : Attribute.values())
     {
       if (this.getAttributeValues(a.toString()).size() > 0)
@@ -199,7 +202,10 @@ public abstract class SVGObject implements GraphicObject
         attributes.add(a.toString().replace("_", " "));
       }
     }
-    return attributes;
+    // late assignment for thread-safety:
+    // prevent other threads from accessing the list while it is being constructed
+    attributesCache = attributes;
+    return attributesCache;
   }
 
   /**
